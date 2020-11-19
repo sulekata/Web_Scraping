@@ -1,0 +1,1 @@
+This is Kata Süle's github repository for the Coding 2 - Web scraping with R course.
