@@ -1,0 +1,92 @@
+---
+title: "Assignment 1"
+author: "Kata Süle"
+date: '22nd November 2020'
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+# Initializing packages
+library( rvest )
+library( data.table )
+library( rmarkdown )
+```
+
+## Scraping stackoverflow.com
+
+### Creating a function that scrapes one page from stackoverflow.com
+```{r}
+get_one_page <- function( my_url ) {
+  t <- read_html( my_url )
+  
+  boxes <- 
+    t %>% 
+    html_nodes('.summary')
+  
+  box_dfs <- lapply( boxes, function( x ){
+    tlist <- list()
+    
+    tlist[[ 'title' ]] <- 
+      x %>% 
+      html_nodes('.question-hyperlink')%>%
+      html_text()
+    
+    relative_link <- 
+      x%>% 
+      html_nodes('.question-hyperlink')%>%
+      html_attr('href')
+    
+    tlist[[ 'link' ]] <- paste0('https://www.stackoverflow.com', relative_link)
+    
+    tlist[[ 'teaser' ]] <-
+      x %>% 
+      html_nodes('.excerpt')%>%
+      html_text()
+    
+    return( tlist )
+    } )
+  
+  df <- rbindlist( box_dfs, fill = T )
+  return( df )
+}
+```
+
+### Creating a function to download multiple pages for a given keyword
+```{r}
+get_multiple_pages <- function( searchterm, number_of_page = 5 ) {
+  
+  searchterm_first_page <- gsub( ' ', '+', searchterm, fixed = T )
+  searchterm_second_page <- gsub( ' ', '%20', searchterm, fixed = T )
+  
+  pages <- c(paste0( 'https://stackoverflow.com/search?q=', searchterm_first_page ),
+             paste0( 'https://stackoverflow.com/search?page=', 2:number_of_page,
+                     '&tab=Relevance&q=', searchterm_second_page ) )
+  
+  df <- rbindlist( lapply( pages, get_one_page ) )
+  return( df )
+}
+```
+
+### Testing the function
+```{r}
+keyword_df <- get_multiple_pages( 'r rbind', 4 )
+```
+
+```{r, echo=FALSE, layout="l-body-outset"}
+# Printing the resulting data frame
+paged_table( as.data.frame( lapply( keyword_df, function(x){ gsub("[\r\n]", "", x) } ) ) )
+```
+
+### Saving the resulting data frame to csv and rds
+```{r}
+write.csv( keyword_df, 'keyword_df.csv' )
+saveRDS( keyword_df, 'keyword_df.rds' )
+```
+
