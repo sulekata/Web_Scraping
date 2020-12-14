@@ -163,6 +163,8 @@ First I scraped the data for all the years by using the get_nobel_data function 
 df_eda <- get_nobel_data( from = 1901, to = 2020 )
 ```
 
+### 1. Exploring gender differences
+
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 # bar chart to check the number of male and female laurates over the years
 df_eda %>% select( knownName.en, gender ) %>% unique() %>% na.omit() %>% 
@@ -177,6 +179,8 @@ df_eda %>% select( knownName.en, gender ) %>% unique() %>% na.omit() %>%
 
 By looking at this plot it is easy to tell that the great majority of Nobel Prize Laurates are men. This is probably due to the fact that women were not allowed to pursue academic careers for a very long time.
 
+### 2. Exploring differences between continents
+
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 # 100% stacked bar chart to see in which continents the laurates of different categories
 # were born
@@ -185,7 +189,7 @@ df_eda %>% select( knownName.en, birth.place.continent.en, category.en ) %>%
   ggplot( aes( x = birth.place.continent.en, fill = category.en ) ) + 
   geom_bar( position="fill" ) +
   labs( x ='\n Continent of Birth', y = 'Percentage of Laurates \n',
-        title = 'Distribution of Nobel Prize Laurates by Continent and Category (1901-2020)') +
+        title = 'Nobel Prize Laurates by Continent and Category (1901-2020)') +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
   guides( fill = guide_legend( title = "Category" ) ) +
@@ -194,18 +198,21 @@ df_eda %>% select( knownName.en, birth.place.continent.en, category.en ) %>%
 
 Based on this chart we can conclude that there are three continents - Asia, Europe and North-America - that were birth places of Laurates in all the six categories. It is interesting to mention that Economic Sciences Laurates were all born on the previously mentioned three continents.
 
+### 3. Exploring differences between prizes
+
 ```{r, warning=FALSE, message=FALSE, echo=FALSE}
 # checking the total amount of awarded prizes in every category
 # first creating a data frame where the amounts are split if the prize was awarded
 # to more than one person
-df_prize <- df_eda %>% select( knownName.en, category.en, prizeAmountAdjusted, portion ) %>% 
-              unique() %>% na.omit()
+df_prize <- df_eda %>% select( knownName.en, category.en, prizeAmountAdjusted, portion ) %>% unique() %>% na.omit()
+
 df_prize <- df_prize %>% mutate( portion_calc = ifelse( df_prize$portion == '1', 1, ifelse( df_prize$portion == '1/2', 0.5, ifelse( df_prize$portion == '1/3', 1/3, ifelse( df_prize$portion == '1/4', 0.25, 5 ) ) ) ) )
+
 df_prize <- df_prize %>% mutate( prize_calc = prizeAmountAdjusted * portion_calc )
 
 # horizontal bar chart for visualization
-df_prize %>% select( category.en, prize_calc ) %>% 
-  ggplot( aes( x = reorder( category.en, -prize_calc), y = prize_calc ) ) +
+df_prize %>%
+  ggplot( aes( x = reorder( category.en, -prize_calc ), y = prize_calc ) ) +
   geom_col( aes( fill = category.en ) ) +
   coord_flip() +
   theme(legend.position = "none") +
