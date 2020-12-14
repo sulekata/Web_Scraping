@@ -1,0 +1,223 @@
+---
+title: "Assignment 2 - Nobel Prizes"
+author: "Kata Süle"
+date: '14th December 2020'
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+# Initializing packages
+library( rvest )
+library( jsonlite )
+library( data.table )
+library( tidyverse )
+library( plyr )
+library( RColorBrewer )
+library( rmarkdown )
+```
+## Introduction
+
+The aim of this web scraping project was to download the most amount of data from the website of the Nobel Prize. In order to make this happen I created a function which is able to retrieve the data in a clean and tabular format. Furthermore, by creating a few visualizations I also explored the resulting data frame.
+
+## Scraping nobelprize.org
+
+To scrape the website I used its [API](https://www.nobelprize.org/about/developer-zone-2/) and with the help of [this site](https://app.swaggerhub.com/apis/NobelMedia/NobelMasterData/2#/default/get_laureates) I was able to create a curl URL which I [transformed](https://curl.trillworks.com/#r) so that I could use it in R.
+
+### Creating a function to scrape Nobel Prize laurates for one given category / or all categories in a given range of years
+```{r}
+get_nobel_data <- function( from, to, category = c( 'che', 'eco', 'lit', 'pea', 'phy', 'med' ) ) {
+  
+  df_full <- NULL
+  
+  # creating a list from the 'from' and 'to' parameters for the for loop
+  years <- seq( from, to, 1)
+  
+  # saving the value of the 'category' parameter to a variable if the user gave one
+  # if not the function retrieves all categories
+  if ( length( category ) == 1 ){
+    category <- category
+  } else {
+    category <- NULL
+  }
+  
+  # downloading data for all the requested years
+  for ( i in years ){
+    require(httr)
+    
+    headers = c(
+      `accept` = 'application/json'
+    )
+    
+    params = list(
+      `nobelPrizeYear` = as.character( i ),
+      `nobelPrizeCategory` = category
+    )
+    
+    # saving the results of the get request
+    res <- httr::GET(url = 'http://api.nobelprize.org/2.0/laureates', httr::add_headers(.headers=headers), query = params)
+    
+    laurates <- fromJSON( content( res, 'text' ), flatten = T )
+    
+    # extracting the data frame on laurates
+    laurates  <- laurates$laureates
+    
+    # in case the get request returns an empty list go to the next iteration
+    if ( length( laurates ) == 0 ){
+      next
+    }
+
+    # extracting the data frame on prizes
+    prizes <- cbind( id = laurates$id, rbindlist( laurates$nobelPrizes, fill = T ) )
+    
+    # extracting the data frame on affiliations
+    # this data is not always available for all laurates so the ids have to be linked
+    # to this data frame as well where it is not null
+    affiliations <- NULL
+    for ( i in 1:nrow( prizes ) ){
+      if ( is.null( prizes$affiliations[[ i ]] ) == FALSE ){
+       # print( prizes$id[ i ] )
+        a <- cbind( id = prizes$id[ i ], rbindlist( prizes$affiliations[ i ], fill = TRUE ) )
+        affiliations <- rbind.fill( affiliations, a )
+      }
+    }
+    
+    # joining the laurates and the prizes data frames
+    df <- full_join( laurates, prizes, by = 'id')
+    
+    # joining the df and the affiliations data frames if affiliations is not null
+    if ( is.null( affiliations ) == FALSE ){ 
+      df <- full_join( df, affiliations, by = 'id' )
+    }
+    
+    # saving the joint data frame to df_full with a rowbind
+    df_full <- rbind.fill( df_full, df )
+  }
+  
+  # saving the column names of df_full
+  df_full_colnames <- names( df_full )
+  
+  # filtering those column names that contain information in Swedish
+  df_full_colnames <- setdiff( df_full_colnames,
+                               df_full_colnames[ str_detect( df_full_colnames, ".se$" ) == TRUE ] )
+  
+  # filtering those column names that contain information in Norwegian
+  df_full_colnames <- setdiff( df_full_colnames,
+                               df_full_colnames[ str_detect( df_full_colnames, ".no$" ) == TRUE ] )
+  
+  possible_extra_columns <- c( 'nobelPrizes',  'givenName.en', 'familyName.en', 'birth.place.locationString.en', 'links.rel.x', 'links.href.x', 'links.action.x', 'links.types.x', 'sortOrder', 'affiliations', 'links.rel.y', 'links.href.y', 'links.action.y', 'links.types.y', 'residences', 'locationString.en',
+'penName', 'death.place.locationString.en', 'acronym', 'founded.place.locationString.en', 'birthCountry.en', 'birthCountryNow.en', 'birthContinent.en', 'nativeName', 'founded.place.city.en', 'founded.place.country.en', 'founded.place.cityNow.en', 'founded.place.countryNow.en', 'founded.place.continent.en' )
+  
+  # filtering extra column names that are not useful for later analysis
+  df_full_colnames <- setdiff( df_full_colnames, possible_extra_columns )
+  
+  # selecting the columns to keep
+  df_full <- df_full %>% select( df_full_colnames )
+  
+  return( df_full )
+}
+```
+
+### Testing the function
+```{r, warning=FALSE, message=FALSE}
+# getting data for a range of years
+between_years <- get_nobel_data( from = 1975, to = 1980 )
+```
+
+```{r, echo=FALSE, layout="l-body-outset"}
+# printing the resulting data frames
+paged_table( between_years )
+```
+
+```{r, warning=FALSE, message=FALSE}
+# getting data for a given category in a range of years
+years_and_cat <- get_nobel_data( from = 1980, to = 1985, category = 'lit' )
+```
+
+```{r, echo=FALSE, layout="l-body-outset"}
+# printing the resulting data frames
+paged_table( years_and_cat )
+```
+
+```{r, warning=FALSE, message=FALSE}
+# getting data for a given category in a range of years
+nobel_2020 <- get_nobel_data( 2010, 2010 )
+```
+
+```{r, echo=FALSE, layout="l-body-outset"}
+# printing the resulting data frames
+paged_table( nobel_2020 )
+```
+
+## Exploratory Data Analysis
+
+First I scraped the data for all the years by using the get_nobel_data function then I created three plots.
+```{r, warning=FALSE, message=FALSE}
+# scrape the data for all the years
+df_eda <- get_nobel_data( from = 1901, to = 2020 )
+```
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# bar chart to check the number of male and female laurates over the years
+df_eda %>% select( knownName.en, gender ) %>% unique() %>% na.omit() %>% 
+  ggplot( aes( x = gender, fill = gender ) )  +
+  geom_bar( ) +
+  labs( x = '\n Gender of Laurates', y = 'Number of Laurates \n',
+        title = 'Distribution of Nobel Prize Laurates by Gender (1901-2020)') +
+  scale_fill_manual( values = c( '#c7006b', 'dodgerblue3' ), name = 'Gender' ) +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+
+By looking at this plot it is easy to tell that the great majority of Nobel Prize Laurates are men. This is probably due to the fact that women were not allowed to pursue academic careers for a very long time.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# 100% stacked bar chart to see in which continents the laurates of different categories
+# were born
+df_eda %>% select( knownName.en, birth.place.continent.en, category.en ) %>% 
+  unique() %>% na.omit() %>% 
+  ggplot( aes( x = birth.place.continent.en, fill = category.en ) ) + 
+  geom_bar( position="fill" ) +
+  labs( x ='\n Continent of Birth', y = 'Percentage of Laurates \n',
+        title = 'Distribution of Nobel Prize Laurates by Continent and Category (1901-2020)') +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) ) +
+  guides( fill = guide_legend( title = "Category" ) ) +
+  scale_fill_brewer( palette = "Blues" )
+```
+
+Based on this chart we can conclude that there are three continents - Asia, Europe and North-America - that were birth places of Laurates in all the six categories. It is interesting to mention that Economic Sciences Laurates were all born on the previously mentioned three continents.
+
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+# checking the total amount of awarded prizes in every category
+# first creating a data frame where the amounts are split if the prize was awarded
+# to more than one person
+df_prize <- df_eda %>% select( knownName.en, category.en, prizeAmountAdjusted, portion ) %>% 
+              unique() %>% na.omit()
+df_prize <- df_prize %>% mutate( portion_calc = ifelse( df_prize$portion == '1', 1, ifelse( df_prize$portion == '1/2', 0.5, ifelse( df_prize$portion == '1/3', 1/3, ifelse( df_prize$portion == '1/4', 0.25, 5 ) ) ) ) )
+df_prize <- df_prize %>% mutate( prize_calc = prizeAmountAdjusted * portion_calc )
+
+# horizontal bar chart for visualization
+df_prize %>% select( category.en, prize_calc ) %>% 
+  ggplot( aes( x = reorder( category.en, -prize_calc), y = prize_calc ) ) +
+  geom_col( aes( fill = category.en ) ) +
+  coord_flip() +
+  theme(legend.position = "none") +
+  scale_fill_brewer( palette = "Set2" ) +
+  labs( x ='\n Category', y = 'Total Amount of Prizes \n',
+        title = 'Total Amount of Awarded Prizes by Category (1901-2020)') +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+
+Based on this chart we can say that the highest amounts were awarded to the category of Chemistry, closely followed by Physics and Literature. The least amounts were awarded to the Economic Sciences category, however, the reason for this is probably that the category was created only in 1969.
+
+## Summary
+
+To conclude, by using the API of the Nobel Prize website and creating a function in R I was able to scrape data on Nobel Prize Laurates and store this data in a tabular format. The visualizations helped to discover a few interesting features of the data and since the resulting data frame contains a lot more variables it can be used for further analysis as well.
